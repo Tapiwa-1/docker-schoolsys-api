@@ -3,11 +3,17 @@
 namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Auth\ForgetPasswordRequest;
 use App\Http\Requests\Auth\LoginRequest;
 use App\Http\Requests\Auth\LogoutRequest;
 use App\Http\Requests\Auth\RegisterRequest;
+use App\Http\Requests\Auth\ResetPasswordRequest;
 use App\Models\User;
+use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Password;
+use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 
 class AuthController extends Controller
 {
@@ -34,6 +40,47 @@ class AuthController extends Controller
         }
     }
 
+    public function forgetPassword(ForgetPasswordRequest $request){
+         try {
+
+                $status = Password::sendResetLink(
+                    $request->only('email')
+                );
+
+                $status === Password::RESET_LINK_SENT
+                            ? back()->with(['status' => __($status)])
+                            : back()->withErrors(['email' => __($status)]);
+
+                return response()->json($status, 200);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => $e->getMessage(),
+                'message' => 'Something went wrong in AuthController.forgetPassword'
+            ]);
+        }
+    }
+
+    public function resetPassword(ResetPasswordRequest $request){
+
+        try{
+            $status = Password::reset(
+                $request->only('email', 'password', 'password_confirmation', 'token'),
+                function ($user, $password) {
+                    $user->forceFill([
+                        'password' => Hash::make($password)
+                    ])->setRememberToken(Str::random(60));
+                    $user->save();
+                    event(new PasswordReset($user));
+                });
+            return response()->json($status, 200);
+        }catch (\Exception $e) {
+            return response()->json([
+                'error' => $e->getMessage(),
+                'message' => 'Something went wrong in AuthController.ResetPassword'
+            ]);
+        }
+    }
     public function login(LoginRequest $request)
     {
         try {
